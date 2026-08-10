@@ -1,0 +1,222 @@
+:root {
+  --bg: #14161a;
+  --panel: #1c1f26;
+  --panel-2: #23262f;
+  --line: #31353f;
+  --text: #e8eaf0;
+  --dim: #9aa0ae;
+  --accent: #5b9dff;
+  --accent-dim: #2f5ea8;
+  --warn: #ffb84d;
+  --bad: #ff6b6b;
+  --good: #4dd08a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  padding: 28px 22px 90px;
+  max-width: 1180px;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+}
+
+header { margin-bottom: 22px; }
+h1 { margin: 0; font-size: 23px; letter-spacing: -0.02em; }
+.sub { margin: 6px 0 0; color: var(--dim); font-size: 14px; }
+
+/* ------------------------------------------------------------- 단계 블록 */
+
+.step {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px 20px 20px;
+  margin-bottom: 16px;
+}
+
+.step h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.num {
+  display: inline-grid;
+  place-items: center;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.note { color: var(--dim); font-size: 13px; }
+.caption { color: var(--dim); font-size: 13px; margin: 4px 0 12px; }
+.hint { color: var(--dim); font-size: 12px; font-weight: 400; }
+
+/* ------------------------------------------------------------- 입력 요소 */
+
+button {
+  font: inherit;
+  padding: 8px 15px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent-dim); border-color: var(--accent); }
+button.primary:hover:not(:disabled) { background: var(--accent); }
+button.big { padding: 11px 26px; font-weight: 700; }
+button.ghost { background: transparent; }
+
+select {
+  font: inherit;
+  padding: 8px 10px;
+  min-width: 260px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+input[type=range] { width: 260px; accent-color: var(--accent); vertical-align: middle; }
+label.check { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 14px; cursor: pointer; }
+output { display: inline-block; min-width: 76px; font-weight: 700; color: var(--accent); }
+
+.controls label { display: block; margin-bottom: 12px; font-size: 14px; }
+.controls label > input[type=range] { margin: 0 12px; }
+
+/* ------------------------------------------------------------- 알림 */
+
+.alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid var(--bad);
+  background: #3a1f22;
+  white-space: pre-wrap;
+}
+.alert.ok { border-color: var(--good); background: #1c3327; }
+
+.warn {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--warn);
+  background: #33291a;
+  font-size: 14px;
+  margin: 0 0 14px;
+}
+
+.setup {
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--warn);
+  background: #33291a;
+  margin-bottom: 16px;
+}
+.setup .caption { margin: 4px 0 0; }
+.setup .grow { flex: 1; min-width: 260px; }
+
+.info {
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--dim);
+}
+.info b { color: var(--text); }
+
+/* ------------------------------------------------------------- 조각 목록 */
+
+.clips { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; max-height: 260px; overflow-y: auto; }
+
+.clip {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  cursor: pointer;
+  font-size: 13px;
+}
+.clip:hover { border-color: var(--accent-dim); }
+.clip.on { border-color: var(--accent); background: #1e2a3d; }
+.clip .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip .time { color: var(--dim); font-variant-numeric: tabular-nums; }
+.clip.gone { opacity: .5; cursor: not-allowed; }
+.clip.gone .name::after { content: " — 파일 없음"; color: var(--bad); }
+
+/* ------------------------------------------------------------- 진행률 */
+
+.progress {
+  position: relative;
+  height: 26px;
+  margin-top: 12px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.progress .bar { height: 100%; width: 0; background: var(--accent-dim); transition: width .18s; }
+.progress .label {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------- 점수 곡선 */
+
+.curve-wrap { margin-bottom: 16px; }
+#curve { width: 100%; display: block; background: var(--panel-2); border-radius: 8px; }
+
+/* ------------------------------------------------------------- 검수 격자 */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.cut {
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.cut.on { border-color: var(--accent); }
+.cut.off { opacity: .42; }
+.cut .pics { display: flex; gap: 5px; align-items: center; }
+.cut .pics img { width: 50%; border-radius: 4px; display: block; background: #000; }
+.cut .pics .arrow { color: var(--dim); font-size: 15px; }
+.cut .meta {
+  display: flex; justify-content: space-between;
+  margin-top: 7px; font-size: 12px; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.cut .meta .t { color: var(--text); font-weight: 700; }
+
+/* ------------------------------------------------------------- 결과 */
+
+#apply-result {
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--good);
+  background: #1c3327;
+  white-space: pre-wrap;
+}
+.restore { margin-top: 16px; display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--dim); }

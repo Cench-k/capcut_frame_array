@@ -1,0 +1,15 @@
+# 빌드 결과물
+build/
+dist/
+*.spec
+
+# 자동 설치된 ffmpeg (200MB 넘는다. 앱이 알아서 받는다)
+bin/
+
+__pycache__/
+*.py[cod]
+
+# 개발 중 실수로 딸려온 것
+*.log
+.vscode/
+.idea/

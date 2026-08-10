@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CapCut 장면 컷 나누기</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-token="__TOKEN__">
+
+<header>
+  <h1>CapCut 장면 컷 나누기</h1>
+  <p class="sub">장면이 바뀌는 지점을 찾아 CapCut 프로젝트의 영상을 그 자리에서 쪼갭니다.</p>
+</header>
+
+<div id="alert" class="alert" hidden></div>
+
+<!-- ffmpeg 가 없으면 아무것도 못 하므로 맨 위에서 먼저 해결하게 한다 -->
+<section id="ffmpeg-banner" class="setup" hidden>
+  <div class="row">
+    <div class="grow">
+      <b>ffmpeg 가 필요합니다.</b>
+      <p class="caption">장면 분석에 쓰는 프로그램입니다. 아래 버튼을 누르면 공식 배포처(gyan.dev)에서
+        받아 이 프로그램 폴더 안에 넣습니다. 약 106MB 를 내려받습니다.</p>
+    </div>
+    <button id="btn-install-ffmpeg" class="primary">ffmpeg 자동 설치</button>
+  </div>
+  <div id="ffmpeg-progress" class="progress" hidden><div class="bar"></div><span class="label"></span></div>
+  <p class="caption" id="ffmpeg-manual"></p>
+</section>
+
+<!-- 1단계 ------------------------------------------------------------- -->
+<section class="step" id="step-project">
+  <h2><span class="num">1</span> 프로젝트 고르기</h2>
+  <div class="row">
+    <select id="draft-list"><option value="">— 최근 프로젝트 —</option></select>
+    <button id="btn-pick" class="ghost">폴더에서 찾기</button>
+    <button id="btn-reload" class="ghost" title="목록 새로 읽기">↻</button>
+  </div>
+  <div id="draft-info" class="info" hidden></div>
+</section>
+
+<!-- 2단계 ------------------------------------------------------------- -->
+<section class="step" id="step-clip" hidden>
+  <h2><span class="num">2</span> 쪼갤 영상 조각 고르기</h2>
+  <div id="clip-list" class="clips"></div>
+  <label class="check">
+    <input type="checkbox" id="whole-file">
+    원본 파일 전체를 분석 (조각이 쓰는 구간 밖도 훑습니다. 보통은 꺼두세요)
+  </label>
+  <div class="row">
+    <button id="btn-scan" class="primary" disabled>장면 분석 시작</button>
+    <span id="scan-note" class="note"></span>
+  </div>
+  <div id="scan-progress" class="progress" hidden><div class="bar"></div><span class="label"></span></div>
+</section>
+
+<!-- 3단계 ------------------------------------------------------------- -->
+<section class="step" id="step-tune" hidden>
+  <h2><span class="num">3</span> 민감도 맞추기</h2>
+  <div class="curve-wrap">
+    <canvas id="curve" height="110"></canvas>
+    <p class="caption">세로 막대는 각 시점의 장면 변화 점수입니다. 가로선이 임계값이고, 그 위로 솟은 봉우리가 컷 후보입니다.</p>
+  </div>
+  <div class="controls">
+    <label>
+      임계값 <output id="out-threshold"></output>
+      <input type="range" id="threshold" min="1" max="60" step="0.5">
+      <span class="hint">낮출수록 컷이 늘어납니다</span>
+    </label>
+    <label>
+      최소 장면 길이 <output id="out-minscene"></output>
+      <input type="range" id="minscene" min="0" max="3000" step="100">
+      <span class="hint">이보다 짧은 장면은 만들지 않습니다</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="adaptive" checked>
+      주변과 비교해서 판정 <span class="hint">카메라가 계속 움직이는 영상의 오탐을 줄입니다</span>
+    </label>
+  </div>
+  <div class="row"><strong id="cut-count">컷 0개</strong>
+    <button id="btn-thumbs" class="primary">썸네일로 검수하기</button>
+  </div>
+  <div id="thumb-progress" class="progress" hidden><div class="bar"></div><span class="label"></span></div>
+</section>
+
+<!-- 4단계 ------------------------------------------------------------- -->
+<section class="step" id="step-review" hidden>
+  <h2><span class="num">4</span> 검수</h2>
+  <p class="caption">각 컷의 <b>직전 / 직후</b> 화면입니다. 장면이 안 바뀐 것 같으면 체크를 풀어 그 컷을 뺍니다.</p>
+  <div class="row">
+    <button id="btn-all" class="ghost">전체 선택</button>
+    <button id="btn-none" class="ghost">전체 해제</button>
+    <span id="review-count" class="note"></span>
+  </div>
+  <div id="cut-grid" class="grid"></div>
+</section>
+
+<!-- 5단계 ------------------------------------------------------------- -->
+<section class="step" id="step-apply" hidden>
+  <h2><span class="num">5</span> CapCut 에 적용</h2>
+  <p class="warn"><b>CapCut 을 완전히 닫은 뒤</b> 적용하세요. 열려 있으면 CapCut 이 기억하고 있던 내용으로 다시 덮어씁니다.</p>
+  <label class="check"><input type="checkbox" id="backup" checked> 적용 전에 백업본 만들기</label>
+  <div class="row">
+    <button id="btn-apply" class="primary big">컷 적용하기</button>
+  </div>
+  <div id="apply-result" hidden></div>
+  <div id="restore-wrap" class="restore" hidden>
+    <span>되돌리기:</span>
+    <select id="backup-list"></select>
+    <button id="btn-restore" class="ghost">이 백업으로 되돌리기</button>
+  </div>
+</section>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
