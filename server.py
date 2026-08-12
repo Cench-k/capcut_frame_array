@@ -343,12 +343,13 @@ class Handler(BaseHTTPRequestHandler):
 
         result = splitter.apply_cuts(draft, {clip.segment_id: cuts})
         if not result.pieces:
-            if result.skipped_clips:
+            if result.skip_reasons:
+                reason = result.skip_reasons[0]
                 raise ApiError(
-                    f"'{clip.name}' 에는 키프레임(확대·이동 애니메이션)이 걸려 있어 "
-                    "쪼개지 않았습니다.\n"
-                    "쪼개면서 키프레임을 잘못 옮기면 애니메이션이 조용히 어긋나기 때문입니다.\n"
-                    "CapCut 에서 이 조각의 키프레임을 지운 뒤 다시 시도해주세요."
+                    f"'{clip.name}' 에는 {reason} 이(가) 걸려 있어 쪼개지 않았습니다.\n"
+                    "억지로 쪼개면 컷이 엉뚱한 자리에 들어가는데, CapCut 은 오류를 내지 않아서 "
+                    "나중에야 알게 됩니다.\n"
+                    f"CapCut 에서 이 조각의 {reason} 을(를) 없앤 뒤 다시 시도해주세요."
                 )
             raise ApiError(
                 "쪼갤 수 있는 컷이 없습니다. 조각의 시작·끝에 너무 붙어 있는 컷은 건너뜁니다."

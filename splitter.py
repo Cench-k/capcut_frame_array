@@ -37,6 +37,8 @@ class SplitResult:
     pieces: int = 0
     applied_cuts: int = 0
     skipped_clips: list[str] = field(default_factory=list)
+    # 건너뛴 이유만 따로. 안내 문구를 이유에 맞게 쓰기 위해서다.
+    skip_reasons: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -236,11 +238,11 @@ def apply_cuts(draft: Draft, plan: dict[str, list[int]]) -> SplitResult:
         cuts = plan.get(clip.segment_id) or []
         if not cuts:
             continue
-        if _has_keyframes(draft, clip):
-            # 키프레임은 세그먼트 안에서의 상대 시각으로 저장된다. 쪼개면 각 조각에 맞춰
-            # 다시 계산해야 하는데, 잘못 옮기면 확대/이동 애니메이션이 조용히 어긋난다.
-            # 손대지 않고 건너뛰고 사용자에게 알린다.
-            result.skipped_clips.append(clip.name)
+        blocker = split_blocker(draft, clip)
+        if blocker:
+            # 손대지 않고 건너뛴다. 왜 건너뛰었는지 같이 들고 가야 사용자가 조치할 수 있다.
+            result.skipped_clips.append(f"{clip.name} ({blocker})")
+            result.skip_reasons.append(blocker)
             continue
         made = split_clip(draft, clip, cuts)
         if made:
@@ -250,6 +252,34 @@ def apply_cuts(draft: Draft, plan: dict[str, list[int]]) -> SplitResult:
     return result
 
 
-def _has_keyframes(draft: Draft, clip: VideoClip) -> bool:
+def split_blocker(draft: Draft, clip: VideoClip) -> str | None:
+    """이 조각을 쪼개면 안 되는 이유. 쪼개도 되면 None.
+
+    여기 걸리는 것들은 모두 **원본 시각과 타임라인 시각의 관계가 단순 비례가 아니거나**,
+    쪼개는 순간 딸린 정보를 같이 옮겨야 하는 경우다. 억지로 쪼개면 파일은 멀쩡해 보이고
+    CapCut 도 오류를 내지 않는데 결과만 조용히 어긋난다. 이 도구에서 가장 나쁜 실패 방식이라,
+    어설프게 처리하느니 손대지 않고 이유를 알린다.
+
+    계산 자체가 불가능한 것은 아니다. 다만 맞는지 확인할 실제 자료가 없다. 사용자의 프로젝트
+    356 개에 이 셋을 쓰는 것이 하나도 없었다. 검증 못 한 변환을 넣는 것보다 건너뛰는 편이 낫다.
+    """
     segment = draft.data["tracks"][clip.track_index]["segments"][clip.segment_index]
-    return bool(segment.get("common_keyframes")) or bool(segment.get("keyframe_refs"))
+
+    # 키프레임은 세그먼트 안에서의 상대 시각으로 저장된다. 쪼개면 각 조각에 맞춰 다시
+    # 계산해야 하는데, 잘못 옮기면 확대/이동 애니메이션이 어긋난다.
+    if segment.get("common_keyframes") or segment.get("keyframe_refs"):
+        return "키프레임(확대·이동 애니메이션)"
+
+    # 거꾸로 재생하는 조각은 원본의 뒤가 타임라인의 앞에 온다. 같은 식으로 옮기면 컷이
+    # 좌우로 뒤집힌 자리에 박힌다.
+    if segment.get("reverse"):
+        return "역재생"
+
+    # 변속 커브는 구간마다 배속이 다르다. 평균 배속으로 옮기면 곡선이 휜 만큼 밀린다.
+    speeds = {s["id"]: s for s in draft.materials.get("speeds", []) if s.get("id")}
+    for ref in segment.get("extra_material_refs", []):
+        item = speeds.get(ref)
+        if item and item.get("curve_speed"):
+            return "변속 커브"
+
+    return None
