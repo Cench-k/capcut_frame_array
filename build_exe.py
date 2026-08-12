@@ -28,8 +28,22 @@ def main() -> int:
         print("[!] PyInstaller 가 없습니다.  pip install pyinstaller")
         return 1
 
+    # 앱이 돌고 있으면 윈도우가 실행 파일을 잠가서 덮어쓸 수 없다. PyInstaller 는
+    # PermissionError 로 끝나는데, 그 순간 dist 에는 **예전 실행 파일이 그대로 남는다.**
+    # 파일이 있는지만 보고 성공으로 넘기면 옛 판을 새 판인 줄 알고 배포하게 된다.
+    # 실제로 그럴 뻔했다. 그래서 먼저 확인하고, 끝나고 또 확인한다.
+    target = ROOT / "dist" / f"{NAME}.exe"
+    stale = target.stat().st_mtime if target.exists() else None
+
     for folder in ("build", "dist"):
         shutil.rmtree(ROOT / folder, ignore_errors=True)
+
+    if target.exists():
+        print(
+            f"[!] 예전 실행 파일을 지우지 못했습니다: {target}\n"
+            "    앱이 돌고 있으면 윈도우가 파일을 잠급니다. 창을 모두 닫고 다시 시도하세요."
+        )
+        return 1
 
     separator = ";" if sys.platform == "win32" else ":"
     args = [
@@ -58,9 +72,14 @@ def main() -> int:
     if result.returncode != 0:
         return result.returncode
 
-    built = ROOT / "dist" / f"{NAME}.exe"
-    if built.exists():
-        print(f"\n[*] 완성: {built}  ({built.stat().st_size / 1e6:.1f} MB)")
+    if not target.exists():
+        print(f"\n[!] 실행 파일이 만들어지지 않았습니다: {target}")
+        return 1
+    if stale is not None and target.stat().st_mtime <= stale:
+        print(f"\n[!] 실행 파일이 갱신되지 않았습니다. 예전 판이 그대로 남아 있습니다: {target}")
+        return 1
+
+    print(f"\n[*] 완성: {target}  ({target.stat().st_size / 1e6:.1f} MB)")
     return 0
 
 
