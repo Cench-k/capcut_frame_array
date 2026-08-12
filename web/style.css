@@ -127,6 +127,9 @@ output { display: inline-block; min-width: 76px; font-weight: 700; color: var(--
 .setup .caption { margin: 4px 0 0; }
 .setup .grow { flex: 1; min-width: 260px; }
 
+.warn.danger { border-color: var(--bad); background: #3a1f22; }
+.warn .caption { margin: 6px 0 10px; }
+
 .info {
   background: var(--panel-2);
   border-radius: 8px;

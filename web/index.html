@@ -99,7 +99,14 @@
 <!-- 5단계 ------------------------------------------------------------- -->
 <section class="step" id="step-apply" hidden>
   <h2><span class="num">5</span> CapCut 에 적용</h2>
-  <p class="warn"><b>CapCut 을 완전히 닫은 뒤</b> 적용하세요. 열려 있으면 CapCut 이 기억하고 있던 내용으로 다시 덮어씁니다.</p>
+  <div id="capcut-warn" class="warn danger" hidden>
+    <b>CapCut 이 켜져 있습니다.</b>
+    <p class="caption">이대로 적용하면 저장은 되지만 CapCut 이 곧바로 예전 내용으로 되돌려서
+      작업이 사라집니다. CapCut 을 완전히 닫아주세요. 창을 닫아도 백그라운드에 남아 있을 수
+      있으니, 사라지지 않으면 작업 관리자에서 확인하세요.</p>
+    <button id="btn-recheck" class="ghost">다시 확인</button>
+  </div>
+  <p id="capcut-ok" class="warn" hidden><b>CapCut 이 닫혀 있습니다.</b> 적용해도 됩니다.</p>
   <label class="check"><input type="checkbox" id="backup" checked> 적용 전에 백업본 만들기</label>
   <div class="row">
     <button id="btn-apply" class="primary big">컷 적용하기</button>

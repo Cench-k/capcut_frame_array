@@ -364,12 +364,15 @@ function renderReview() {
   $("step-review").hidden = false;
   $("step-apply").hidden = false;
   renderReviewCount();
+  checkCapCut();
   $("step-review").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderReviewCount() {
   $("review-count").textContent = `${state.keep.size} / ${state.cuts.length} 개 선택됨`;
-  $("btn-apply").disabled = state.keep.size === 0;
+  // CapCut 이 켜져 있어 막아둔 상태라면 그대로 둔다.
+  const blocked = !$("capcut-warn").hidden;
+  $("btn-apply").disabled = blocked || state.keep.size === 0;
 }
 
 function setAll(on) {
@@ -383,6 +386,20 @@ function setAll(on) {
 }
 
 // ------------------------------------------------------------------ 5단계
+
+// CapCut 이 켜진 채로 적용하면 저장은 되는데 CapCut 이 곧바로 되돌린다. 오류가 안 나므로
+// 사용자는 '프로그램이 안 먹는다' 고만 느낀다. 그래서 누르기 전에 미리 보여주고 막는다.
+async function checkCapCut() {
+  try {
+    const { running } = await api("/api/capcut");
+    $("capcut-warn").hidden = !running;
+    $("capcut-ok").hidden = running;
+    $("btn-apply").disabled = running || state.keep.size === 0;
+    return running;
+  } catch {
+    return false;  // 확인 못 했다고 못 쓰게 막지는 않는다
+  }
+}
 
 async function applyCuts() {
   clearError();
@@ -405,7 +422,7 @@ async function applyCuts() {
   } catch (err) {
     showError(err.message);
   } finally {
-    $("btn-apply").disabled = false;
+    await checkCapCut();
   }
 }
 
@@ -457,6 +474,7 @@ $("btn-none").onclick = () => setAll(false);
 $("btn-apply").onclick = applyCuts;
 $("btn-restore").onclick = restore;
 $("btn-install-ffmpeg").onclick = installFfmpeg;
+$("btn-recheck").onclick = checkCapCut;
 window.addEventListener("resize", drawCurve);
 
 checkFfmpeg();

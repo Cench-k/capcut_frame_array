@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import uuid
 from dataclasses import dataclass
@@ -46,6 +47,32 @@ def capcut_user_data() -> Path:
 
 
 DRAFT_ROOT = capcut_user_data() / "Projects" / "com.lveditor.draft"
+
+
+def capcut_running() -> bool:
+    """CapCut 이 지금 켜져 있는가.
+
+    켜진 채로 드래프트를 고쳐 쓰면 **작업이 조용히 사라진다.** CapCut 은 프로젝트를 메모리에
+    들고 있다가 제 시점에 통째로 다시 쓰는데, 그때 우리가 쓴 내용이 통째로 덮인다. 파일 쓰기는
+    성공하고 오류도 안 나므로, 사용자 눈에는 '프로그램이 안 먹는다' 로만 보인다.
+
+    실제로 이 일이 있었다. 적용 네 번이 전부 저장에 성공했는데 CapCut 이 매번 되돌려서,
+    조각이 하나도 안 늘었다.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        done = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"],
+            capture_output=True,
+            timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        # 확인할 수 없으면 막지 않는다. 막았다가 쓰지도 못하게 되는 쪽이 더 나쁘다.
+        return False
+    # 찾는 것이 없으면 tasklist 는 안내 문구만 내보낸다. 이름이 보일 때만 켜진 것으로 본다.
+    return b"CapCut.exe" in done.stdout
 
 
 def find_draft_file(folder: Path) -> Path | None:

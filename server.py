@@ -28,7 +28,7 @@ import ffmpeg_setup
 import media
 import splitter
 import thumbs
-from capcut_draft import DRAFT_ROOT, Draft, find_draft_file, list_drafts
+from capcut_draft import DRAFT_ROOT, Draft, capcut_running, find_draft_file, list_drafts
 from errors import UserError
 from folder_picker import ask_folder
 from jobs import Job, store
@@ -193,6 +193,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(self._job(query["id"][0]))
             if route == "/api/pick":
                 return self._json(self._pick())
+            if route == "/api/capcut":
+                return self._json({"running": capcut_running()})
             if route == "/api/ffmpeg":
                 return self._json(ffmpeg_setup.status())
         except UserError as exc:
@@ -269,6 +271,7 @@ class Handler(BaseHTTPRequestHandler):
         detail["clips"] = [c.as_dict() for c in clips]
         detail["backups"] = [p.name for p in draft.backups()]
         detail["missing"] = [c.name for c in clips if not c.exists]
+        detail["capcut_running"] = capcut_running()
         return detail
 
     def _job(self, job_id: str) -> dict:
@@ -321,6 +324,18 @@ class Handler(BaseHTTPRequestHandler):
         if not cuts:
             raise ApiError("적용할 컷이 없습니다.")
 
+        # CapCut 이 켜져 있으면 아예 시작하지 않는다. 여기서 막지 않으면 저장은 성공하는데
+        # CapCut 이 곧바로 제 기억으로 되돌려서, 사용자 눈에는 아무 일도 안 일어난 것처럼
+        # 보인다. 오류도 안 나기 때문에 원인을 짐작할 방법이 없다.
+        if capcut_running():
+            raise ApiError(
+                "CapCut 이 켜져 있습니다. 완전히 닫고 다시 눌러주세요.\n\n"
+                "켜진 채로 적용하면 저장은 되지만 CapCut 이 곧바로 예전 내용으로 "
+                "되돌려서 작업이 사라집니다.\n"
+                "창을 닫아도 트레이나 백그라운드에 남아 있을 수 있으니, "
+                "작업 관리자에서 CapCut 이 없는지 확인해주세요."
+            )
+
         clip = clip_by_id(draft, segment_id)
         before_duration = draft.duration_us
         result = splitter.apply_cuts(draft, {clip.segment_id: cuts})
@@ -361,6 +376,10 @@ class Handler(BaseHTTPRequestHandler):
         """백업본을 되돌린다."""
         draft = open_draft(payload.get("folder"))
         name = Path(payload.get("backup") or "").name
+        # 되돌리기도 파일을 고쳐 쓰는 일이라 같은 조건이다. CapCut 이 켜져 있으면 되돌려
+        # 놔도 곧바로 도로 덮인다. 파일을 찾기 전에 먼저 본다.
+        if capcut_running():
+            raise ApiError("CapCut 이 켜져 있습니다. 완전히 닫고 다시 눌러주세요.")
         source = draft.folder / name
         if not name.endswith(".scenecut-backup.json") or not source.is_file():
             raise ApiError("그 백업 파일을 찾지 못했습니다.")
