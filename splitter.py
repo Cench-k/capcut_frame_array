@@ -51,13 +51,29 @@ def _deep(value):
     return json.loads(json.dumps(value))
 
 
+def effective_speed(clip: VideoClip) -> float:
+    """이 조각에서 원본 시간이 타임라인 시간으로 얼마나 줄어드는지.
+
+    `speed` 필드를 그대로 믿지 않고 **실제 길이의 비율**로 구한다. 둘은 대개 같지만 항상
+    같지는 않다. 실제 프로젝트를 훑어보니 `speed` 가 1.2 라고 적혀 있는데 길이 비율은 1.2061
+    인 조각이 있었다. 0.5% 차이인데, 그 값으로 옮기면 60 초 지점의 컷이 약 250ms 밀린다.
+    장면 전환을 프레임 단위로 맞추려는 도구에서 눈에 띄는 어긋남이다.
+
+    길이 비율은 정의상 이 조각의 양 끝을 정확히 맞추므로, 반올림 말고는 틀릴 여지가 없다.
+    """
+    if clip.source_duration_us > 0 and clip.target_duration_us > 0:
+        return clip.source_duration_us / clip.target_duration_us
+    return clip.speed if clip.speed > 0 else 1.0
+
+
 def source_to_target_us(clip: VideoClip, source_us: int) -> int:
     """원본 파일의 시각을 타임라인 시각으로 옮긴다.
 
-    배속이 걸린 조각은 원본 1 초가 타임라인에서 1 초가 아니다. `speed` 로 나눠준다.
+    배속이 걸린 조각은 원본 1 초가 타임라인에서 1 초가 아니다.
     """
-    speed = clip.speed if clip.speed > 0 else 1.0
-    return clip.target_start_us + int(round((source_us - clip.source_start_us) / speed))
+    return clip.target_start_us + int(
+        round((source_us - clip.source_start_us) / effective_speed(clip))
+    )
 
 
 def usable_cuts(clip: VideoClip, cuts_source_us: list[int]) -> list[int]:
@@ -68,8 +84,8 @@ def usable_cuts(clip: VideoClip, cuts_source_us: list[int]) -> list[int]:
     """
     lo = clip.source_start_us
     hi = clip.source_start_us + clip.source_duration_us
-    speed = clip.speed if clip.speed > 0 else 1.0
-    margin = int(MIN_PIECE_US * speed)
+    # 최소 길이는 타임라인 기준이므로 원본 기준으로 바꿔서 잰다.
+    margin = int(MIN_PIECE_US * effective_speed(clip))
 
     kept: list[int] = []
     for cut in sorted(set(int(c) for c in cuts_source_us)):

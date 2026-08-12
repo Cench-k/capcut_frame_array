@@ -338,15 +338,25 @@ class Handler(BaseHTTPRequestHandler):
 
         clip = clip_by_id(draft, segment_id)
         before_duration = draft.duration_us
+        # 고치기 전 모습을 적어둔다. 저장 직전 검사가 이것과 견줘서 판단한다.
+        before = check_draft.snapshot(draft)
+
         result = splitter.apply_cuts(draft, {clip.segment_id: cuts})
         if not result.pieces:
+            if result.skipped_clips:
+                raise ApiError(
+                    f"'{clip.name}' 에는 키프레임(확대·이동 애니메이션)이 걸려 있어 "
+                    "쪼개지 않았습니다.\n"
+                    "쪼개면서 키프레임을 잘못 옮기면 애니메이션이 조용히 어긋나기 때문입니다.\n"
+                    "CapCut 에서 이 조각의 키프레임을 지운 뒤 다시 시도해주세요."
+                )
             raise ApiError(
                 "쪼갤 수 있는 컷이 없습니다. 조각의 시작·끝에 너무 붙어 있는 컷은 건너뜁니다."
             )
 
         # 저장 직전에 한 번 더 본다. CapCut 은 어긋난 드래프트를 열어도 오류를 내지 않고
         # 조용히 이상하게 그리기 때문에, 여기서 막지 못하면 사용자가 원인을 알 수 없다.
-        problems = check_draft.verify(draft, expect_duration_us=before_duration)
+        problems = check_draft.verify(draft, before=before, expect_duration_us=before_duration)
         if problems:
             raise ApiError("결과가 어긋나 저장하지 않았습니다:\n- " + "\n- ".join(problems[:5]))
 

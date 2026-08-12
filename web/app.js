@@ -164,6 +164,15 @@ function renderDraft(draft) {
       row.onclick = () => {
         for (const other of box.children) other.classList.remove("on");
         row.classList.add("on");
+        // 조각이 바뀌면 예전 분석은 이 조각의 것이 아니다. 그대로 두면 A 를 분석해서
+        // 검수한 컷이 B 에 적용된다.
+        if (state.clip && state.clip.segment_id !== clip.segment_id) {
+          state.scanId = "";
+          state.cuts = [];
+          state.curve = [];
+          $("step-tune").hidden = true;
+          invalidateReview();
+        }
         state.clip = clip;
         syncScanButton();
       };
@@ -266,9 +275,21 @@ async function recut() {
       min_scene_us: Number($("minscene").value) * 1000,
     });
     state.cuts = data.cuts;
+    // 컷 목록이 바뀌면 방금까지 보던 검수 결과는 더 이상 이 목록을 가리키지 않는다.
+    // 남겨두면 화면에 보이는 것과 실제로 적용될 것이 어긋난다. 접고 다시 뽑게 한다.
+    invalidateReview();
     renderCutCount();
     drawCurve();
   } catch (err) { showError(err.message); }
+}
+
+// 검수 결과를 버린다. 컷 목록이 달라졌거나 다른 조각을 고른 경우.
+function invalidateReview() {
+  state.keep = new Set();
+  state.thumbs = new Map();
+  $("cut-grid").innerHTML = "";
+  $("step-review").hidden = true;
+  $("step-apply").hidden = true;
 }
 
 function renderCutCount() {
