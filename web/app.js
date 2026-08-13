@@ -435,10 +435,13 @@ async function applyCuts() {
     });
     let text = `조각 ${result.pieces}개로 나눴습니다. (컷 ${result.applied_cuts}개 적용)`;
     if (result.backup) text += `\n백업: ${result.backup}`;
-    if (result.skipped.length) text += `\n건너뜀(키프레임 있음): ${result.skipped.join(", ")}`;
-    text += "\n\nCapCut 에서 프로젝트를 열어 확인하세요.";
+    text += `\n파일 확인: 지금 ${result.confirmed}조각으로 저장돼 있습니다.`;
+    if (result.skipped.length) text += `\n건너뜀: ${result.skipped.join(", ")}`;
+    text += "\n\n이제 CapCut 을 열어도 됩니다. 열고 나서 아래 '지금 상태 확인' 을 눌러보면"
+          + " 조각이 그대로인지 볼 수 있습니다.";
     $("apply-result").hidden = false;
     $("apply-result").textContent = text;
+    watchAfterApply(result.confirmed);
     await openDraftKeepingResult();
   } catch (err) {
     showError(err.message);
@@ -455,6 +458,58 @@ async function openDraftKeepingResult() {
     $("restore-wrap").hidden = !backups.length;
     $("backup-list").innerHTML = backups.map((b) => `<option>${b}</option>`).join("");
   } catch { /* 목록 갱신 실패는 치명적이지 않다 */ }
+}
+
+// 적용한 뒤 잠시 지켜본다.
+//
+// CapCut 이 되가져간 것은 실측에서 13 초, 13 초, 59 초 뒤였다. 서버가 그때까지 붙잡고 있으면
+// 정상일 때도 화면이 멈춘 것처럼 보이므로, 기다리는 일은 화면이 맡는다. 사용자는 그동안
+// 아무것도 안 해도 되고, 되돌아가면 그 순간 알려준다.
+const WATCH_MS = 60_000;
+let watchTimer = null;
+
+function watchAfterApply(expected) {
+  clearInterval(watchTimer);
+  const until = Date.now() + WATCH_MS;
+  const note = $("state-note");
+  note.textContent = `지켜보는 중… 지금 ${expected}조각`;
+
+  watchTimer = setInterval(async () => {
+    let now;
+    try {
+      now = (await api(`/api/state?folder=${encodeURIComponent(state.folder)}`)).segments;
+    } catch { return; }
+
+    if (now !== expected && now >= 0) {
+      clearInterval(watchTimer);
+      note.textContent = `되돌아갔습니다: ${expected}조각 → ${now}조각`;
+      showError(
+        `방금 적용한 것이 ${now}조각으로 되돌아갔습니다.\n\n` +
+        "CapCut 이 이 프로젝트를 들고 있다가 제 기억으로 덮어썼습니다. " +
+        "CapCut 을 완전히 끄고(작업 관리자에서 CapCut.exe 가 없는지 확인) 다시 적용하세요.\n" +
+        "적용이 끝난 뒤에 CapCut 을 여는 것이 중요합니다."
+      );
+      return;
+    }
+    if (Date.now() > until) {
+      clearInterval(watchTimer);
+      note.textContent = `1분 동안 그대로입니다 (${expected}조각). 이제 CapCut 을 열어도 됩니다.`;
+    }
+  }, 3000);
+}
+
+// 짐작하지 말고 파일을 직접 읽어서 보여준다. 지금까지 실패가 매번 조용했던 것이 문제였다.
+async function checkState() {
+  if (!state.folder) return;
+  const note = $("state-note");
+  note.textContent = "확인 중…";
+  try {
+    const s = await api(`/api/state?folder=${encodeURIComponent(state.folder)}`);
+    const running = s.capcut_running ? " · CapCut 켜져 있음" : " · CapCut 꺼져 있음";
+    note.textContent = `지금 이 프로젝트는 영상 조각 ${s.segments}개입니다.${running}`;
+  } catch (err) {
+    note.textContent = err.message;
+  }
 }
 
 async function restore() {
@@ -496,6 +551,7 @@ $("btn-apply").onclick = applyCuts;
 $("btn-restore").onclick = restore;
 $("btn-install-ffmpeg").onclick = installFfmpeg;
 $("btn-recheck").onclick = checkCapCut;
+$("btn-state").onclick = checkState;
 window.addEventListener("resize", drawCurve);
 
 checkFfmpeg();

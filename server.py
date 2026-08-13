@@ -17,6 +17,7 @@ import mimetypes
 import secrets
 import shutil
 import sys
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,7 +29,14 @@ import ffmpeg_setup
 import media
 import splitter
 import thumbs
-from capcut_draft import DRAFT_ROOT, Draft, capcut_running, find_draft_file, list_drafts
+from capcut_draft import (
+    DRAFT_ROOT,
+    Draft,
+    capcut_running,
+    count_video_segments,
+    find_draft_file,
+    list_drafts,
+)
 from errors import UserError
 from folder_picker import ask_folder
 from jobs import Job, store
@@ -121,6 +129,27 @@ def scan_job(job: Job, draft_folder: str, segment_id: str, whole_file: bool) -> 
     }
 
 
+# 저장한 뒤 결과가 살아남는지 잠깐 지켜보는 시간.
+#
+# 짧게 잡았다. 실측에서 CapCut 이 되가져간 것은 13 초, 13 초, 59 초 뒤였다. 그것까지 잡으려고
+# 여기서 1 분을 기다리면 정상일 때도 매번 1 분씩 멈춘 것처럼 보인다. 그래서 서버는 '쓰자마자
+# 곧바로 덮는' 경우만 보고 바로 돌려주고, 그 뒤로는 **화면이 1 분간 지켜본다.** 기다리는 일을
+# 사용자를 붙잡아두지 않는 쪽으로 옮긴 것이다.
+WATCH_SECONDS = 2
+
+
+def _watch_for_revert(folder: Path, expected: int) -> int | None:
+    """저장한 내용이 그대로 있는지 잠시 지켜본다. 되돌아갔으면 그때의 조각 수를 준다."""
+    deadline = time.monotonic() + WATCH_SECONDS
+    while True:
+        now = count_video_segments(folder)
+        if now not in (expected, -1):
+            return now
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.4)
+
+
 def thumbs_job(job: Job, scan_id: str, times_us: list[int]) -> dict:
     """컷마다 전환 직전 / 직후 그림을 뽑는다."""
     source = store.get(scan_id)
@@ -193,6 +222,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(self._job(query["id"][0]))
             if route == "/api/pick":
                 return self._json(self._pick())
+            if route == "/api/state":
+                folder = query["folder"][0]
+                return self._json({
+                    "segments": count_video_segments(folder),
+                    "capcut_running": capcut_running(),
+                })
             if route == "/api/capcut":
                 return self._json({"running": capcut_running()})
             if route == "/api/ffmpeg":
@@ -362,11 +397,26 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("결과가 어긋나 저장하지 않았습니다:\n- " + "\n- ".join(problems[:5]))
 
         backup = draft.save(make_backup=bool(payload.get("backup", True)))
+
+        # 저장했다고 끝이 아니다. CapCut 이 그사이 켜지면 제 기억으로 되돌려 버리는데,
+        # 파일 쓰기는 성공했으므로 우리 쪽에는 아무 신호가 없다. 실제로 이 일이 여러 번
+        # 있었고, 그때마다 화면에는 '완료' 가 떴다. 그래서 쓴 뒤에 잠시 지켜본다.
+        took_back = _watch_for_revert(draft.folder, result.pieces)
+        if took_back is not None:
+            raise ApiError(
+                f"적용은 됐는데 {WATCH_SECONDS}초 안에 다시 {took_back}조각으로 되돌아갔습니다.\n"
+                "CapCut 이 이 프로젝트를 들고 있다가 제 기억으로 덮어쓴 것입니다.\n\n"
+                "CapCut 을 완전히 끄고(작업 관리자에서 CapCut.exe 가 없는지 확인) "
+                "다시 적용한 뒤, 적용이 끝난 다음에 CapCut 을 여세요.\n"
+                f"직전 상태는 {backup.name if backup else '백업'} 에 남아 있습니다."
+            )
+
         return {
             "pieces": result.pieces,
             "applied_cuts": result.applied_cuts,
             "skipped": result.skipped_clips,
             "backup": backup.name if backup else "",
+            "confirmed": count_video_segments(draft.folder),
         }
 
     def _install_ffmpeg(self) -> dict:

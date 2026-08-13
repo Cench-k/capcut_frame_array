@@ -75,6 +75,27 @@ def capcut_running() -> bool:
     return b"CapCut.exe" in done.stdout
 
 
+def count_video_segments(folder: str | Path) -> int:
+    """지금 파일에 영상 조각이 몇 개인지. 드래프트를 통째로 해석하지 않고 세기만 한다.
+
+    적용한 결과가 살아남았는지 확인하는 데 쓴다. CapCut 이 되가져갔는지는 **결과를 다시
+    읽어보는 것** 말고 확실한 방법이 없다. 프로세스가 떠 있는지 보는 것은 어디까지나 짐작이라,
+    오늘처럼 적용 직후에 CapCut 이 켜지는 경우를 놓친다.
+    """
+    found = find_draft_file(Path(folder))
+    if not found:
+        return -1
+    try:
+        data = json.loads(found.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return -1
+    return sum(
+        len(t.get("segments", []))
+        for t in data.get("tracks", [])
+        if t.get("type") == "video"
+    )
+
+
 def find_draft_file(folder: Path) -> Path | None:
     for name in DRAFT_FILENAMES:
         candidate = folder / name
