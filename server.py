@@ -138,12 +138,19 @@ def scan_job(job: Job, draft_folder: str, segment_id: str, whole_file: bool) -> 
 WATCH_SECONDS = 2
 
 
-def _watch_for_revert(folder: Path, expected: int) -> int | None:
-    """저장한 내용이 그대로 있는지 잠시 지켜본다. 되돌아갔으면 그때의 조각 수를 준다."""
+def _watch_for_revert(folder: Path, saved: int) -> int | None:
+    """저장한 내용이 그대로 있는지 잠시 지켜본다. 달라졌으면 그때의 조각 수를 준다.
+
+    `saved` 는 **저장 직후에 파일에서 직접 읽은 값**이어야 한다. 만들어낸 조각 수를 넘기면
+    안 된다. 이 함수가 세는 것은 파일 전체의 영상 조각 수인데, 조각 하나를 쪼갠 결과는
+    그중 일부일 뿐이라서다. 조각이 16 개인 프로젝트에서 하나를 4 조각으로 나누면 파일은
+    19 개가 되는데 만들어낸 것은 4 개다. 둘을 견주면 멀쩡한 적용을 '되돌아갔다' 고 한다.
+    실제로 그렇게 내보냈다가 되돌렸다.
+    """
     deadline = time.monotonic() + WATCH_SECONDS
     while True:
         now = count_video_segments(folder)
-        if now not in (expected, -1):
+        if now not in (saved, -1):
             return now
         if time.monotonic() >= deadline:
             return None
@@ -401,10 +408,15 @@ class Handler(BaseHTTPRequestHandler):
         # 저장했다고 끝이 아니다. CapCut 이 그사이 켜지면 제 기억으로 되돌려 버리는데,
         # 파일 쓰기는 성공했으므로 우리 쪽에는 아무 신호가 없다. 실제로 이 일이 여러 번
         # 있었고, 그때마다 화면에는 '완료' 가 떴다. 그래서 쓴 뒤에 잠시 지켜본다.
-        took_back = _watch_for_revert(draft.folder, result.pieces)
+        #
+        # 기준은 **저장 직후 파일에서 읽은 값**이다. 만들어낸 조각 수를 기준으로 삼으면
+        # 조각이 여럿인 프로젝트에서 멀쩡한 적용을 되돌아갔다고 하게 된다.
+        saved = count_video_segments(draft.folder)
+        took_back = _watch_for_revert(draft.folder, saved)
         if took_back is not None:
             raise ApiError(
-                f"적용은 됐는데 {WATCH_SECONDS}초 안에 다시 {took_back}조각으로 되돌아갔습니다.\n"
+                f"적용은 됐는데 {WATCH_SECONDS}초 안에 {saved}조각에서 {took_back}조각으로 "
+                "되돌아갔습니다.\n"
                 "CapCut 이 이 프로젝트를 들고 있다가 제 기억으로 덮어쓴 것입니다.\n\n"
                 "CapCut 을 완전히 끄고(작업 관리자에서 CapCut.exe 가 없는지 확인) "
                 "다시 적용한 뒤, 적용이 끝난 다음에 CapCut 을 여세요.\n"

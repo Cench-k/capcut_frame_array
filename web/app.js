@@ -433,9 +433,9 @@ async function applyCuts() {
       cuts_us: cuts,
       backup: $("backup").checked,
     });
-    let text = `조각 ${result.pieces}개로 나눴습니다. (컷 ${result.applied_cuts}개 적용)`;
+    let text = `고른 조각을 ${result.pieces}개로 나눴습니다. (컷 ${result.applied_cuts}개 적용)`;
     if (result.backup) text += `\n백업: ${result.backup}`;
-    text += `\n파일 확인: 지금 ${result.confirmed}조각으로 저장돼 있습니다.`;
+    text += `\n파일 확인: 프로젝트 전체 영상 조각이 ${result.confirmed}개로 저장돼 있습니다.`;
     if (result.skipped.length) text += `\n건너뜀: ${result.skipped.join(", ")}`;
     text += "\n\n이제 CapCut 을 열어도 됩니다. 열고 나서 아래 '지금 상태 확인' 을 눌러보면"
           + " 조각이 그대로인지 볼 수 있습니다.";
@@ -472,12 +472,16 @@ function watchAfterApply(expected) {
   clearInterval(watchTimer);
   const until = Date.now() + WATCH_MS;
   const note = $("state-note");
+  // 지켜보는 동안 사용자가 다른 프로젝트를 골라도 **적용한 그 폴더**를 계속 봐야 한다.
+  // 화면의 현재 폴더를 그때그때 읽으면, 프로젝트를 바꾼 순간 엉뚱한 폴더의 조각 수와
+  // 견주게 되어 멀쩡한 것을 되돌아갔다고 한다.
+  const folder = state.folder;
   note.textContent = `지켜보는 중… 지금 ${expected}조각`;
 
   watchTimer = setInterval(async () => {
     let now;
     try {
-      now = (await api(`/api/state?folder=${encodeURIComponent(state.folder)}`)).segments;
+      now = (await api(`/api/state?folder=${encodeURIComponent(folder)}`)).segments;
     } catch { return; }
 
     if (now !== expected && now >= 0) {
