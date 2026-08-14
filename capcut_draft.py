@@ -82,11 +82,15 @@ def count_video_segments(folder: str | Path) -> int:
     읽어보는 것** 말고 확실한 방법이 없다. 프로세스가 떠 있는지 보는 것은 어디까지나 짐작이라,
     오늘처럼 적용 직후에 CapCut 이 켜지는 경우를 놓친다.
     """
-    found = find_draft_file(Path(folder))
+    root = Path(folder)
+    found = find_draft_file(root)
     if not found:
         return -1
+    # 본문이 여러 곳에 있으면 가장 최근 것을 본다. Draft 가 읽는 것과 같은 기준이어야
+    # '저장한 것이 살아남았는가' 를 제대로 판단할 수 있다.
+    newest = max([found, *timeline_copies(root)], key=lambda p: p.stat().st_mtime)
     try:
-        data = json.loads(found.read_text(encoding="utf-8"))
+        data = json.loads(newest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return -1
     return sum(
@@ -102,6 +106,48 @@ def find_draft_file(folder: Path) -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def timeline_copies(folder: Path) -> list[Path]:
+    """`Timelines/<타임라인 id>/draft_content.json` 사본들.
+
+    최신 CapCut 은 한 프로젝트에 여러 타임라인을 둘 수 있고, 그 구조에서는 본문이 **두 곳에
+    똑같이** 있다. 폴더 맨 위의 것과 `Timelines/<id>/` 안의 것이다. 실제 프로젝트 359 개 중
+    127 개가 이 구조였고, 그중 126 개는 두 파일이 바이트까지 같았다. CapCut 이 저장할 때
+    양쪽을 함께 쓰기 때문이다.
+
+    **맨 위의 것만 고치면 안 된다.** CapCut 이 프로젝트를 열 때 `Timelines/` 쪽을 읽어서
+    예전 내용이 올라오고, 그것이 다시 맨 위로 써지면서 우리 작업이 사라진다. "적용됐다고
+    했는데 CapCut 을 열면 원래대로" 가 정확히 이 증상이다.
+
+    `.bak` 과 `template-2.tmp` 도 같은 내용을 담고 있지만 건드리지 않는다. `.bak` 은 CapCut
+    자신의 복구용이라 남겨두는 편이 사용자에게 안전하고, `.tmp` 는 저장할 때 다시 만들어진다.
+    """
+    root = folder / "Timelines"
+    if not root.is_dir():
+        return []
+
+    # project.json 이 주 타임라인을 알려준다. 없으면 있는 것을 전부 맞춰둔다.
+    wanted: set[str] = set()
+    config = root / "project.json"
+    if config.is_file():
+        try:
+            data = json.loads(config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        main = data.get("main_timeline_id")
+        if main:
+            wanted.add(str(main))
+
+    found: list[Path] = []
+    for child in root.iterdir():
+        if not child.is_dir() or (wanted and child.name not in wanted):
+            continue
+        for name in DRAFT_FILENAMES:
+            candidate = child / name
+            if candidate.is_file():
+                found.append(candidate)
+    return found
 
 
 def new_id() -> str:
@@ -163,7 +209,11 @@ class Draft:
             raise FileNotFoundError(
                 f"드래프트 파일({' 또는 '.join(DRAFT_FILENAMES)})이 없습니다: {self.folder}"
             )
-        self.path = found
+        # 본문이 여러 곳에 똑같이 있는 구조라면 **가장 최근에 쓰인 것**을 읽는다. 맨 위의
+        # 것이 낡아 있는 경우가 실제로 있었다(359 개 중 1 개). 낡은 쪽을 읽어 고치면 새 내용을
+        # 옛것으로 덮어쓰게 된다.
+        self.mirrors = timeline_copies(self.folder)
+        self.path = max([found, *self.mirrors], key=lambda p: p.stat().st_mtime)
         raw = self.path.read_text(encoding="utf-8")
         if not raw.lstrip().startswith("{"):
             raise ValueError(
@@ -291,12 +341,33 @@ class Draft:
         """
         backup_path = self.backup() if make_backup else None
         # CapCut 은 공백 없는 compact JSON 으로 저장한다. 포맷을 맞춰준다.
-        text = json.dumps(self.data, ensure_ascii=False, separators=(",", ":"))
-        temp = self.path.with_suffix(self.path.suffix + ".tmp")
-        temp.write_text(text, encoding="utf-8")
-        os.replace(temp, self.path)
+        self.write_all(json.dumps(self.data, ensure_ascii=False, separators=(",", ":")))
         self._touch_meta()
         return backup_path
+
+    def write_all(self, text: str) -> list[Path]:
+        """본문이 있는 곳을 **전부** 같은 내용으로 맞춘다.
+
+        한 곳만 고치면 안 된다. CapCut 이 다른 쪽을 읽어 예전 내용을 되살리고, 그것이 도로
+        덮어써서 작업이 사라진다. 게다가 한 곳만 새것이 되면 '가장 최근 것' 을 고르는 규칙이
+        낡은 쪽을 가리키게 되어, 다음에 읽을 때도 엉뚱한 내용을 보게 된다.
+        """
+        root = find_draft_file(self.folder)
+        targets = {p.resolve() for p in ([root] if root else []) + self.mirrors}
+        targets.add(self.path.resolve())
+
+        written: list[Path] = []
+        for target in sorted(targets):
+            # 임시 파일에 먼저 쓰고 바꿔치기한다. 쓰는 도중 문제가 생겨도 반쯤 덮이지 않는다.
+            temp = target.with_suffix(target.suffix + ".writing")
+            temp.write_text(text, encoding="utf-8")
+            os.replace(temp, target)
+            written.append(target)
+        return written
+
+    def restore_from(self, backup: Path) -> list[Path]:
+        """백업 내용을 모든 사본에 되돌려 놓는다."""
+        return self.write_all(backup.read_text(encoding="utf-8"))
 
     def _touch_meta(self) -> None:
         """draft_meta_info.json 의 길이와 수정 시각을 본문과 맞춘다.

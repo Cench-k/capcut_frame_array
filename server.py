@@ -456,7 +456,9 @@ class Handler(BaseHTTPRequestHandler):
         source = draft.folder / name
         if not name.endswith(".scenecut-backup.json") or not source.is_file():
             raise ApiError("그 백업 파일을 찾지 못했습니다.")
-        shutil.copy2(source, draft.path)
+        # 저장과 같은 규칙으로 되돌린다. 한 곳만 되돌리면 손대지 않은 사본이 더 새것이 되어
+        # 다음에 읽을 때 그쪽이 뽑히고, 되돌린 것이 없던 일이 된다.
+        draft.restore_from(source)
         return {"restored": name, "clips": len(Draft(draft.folder).video_clips())}
 
 
